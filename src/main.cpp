@@ -4,6 +4,7 @@
  */
 #include "main.h"
 #include <windows.h>
+#include <wrl.h>
 #include <assert.h>
 
 /**
@@ -33,7 +34,6 @@ WindowProcedure(HWND windowInstance, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 
 		case WM_CLOSE:
-		case WM_QUIT:
 		{
 			getAppState().isRunning = false; // Close the application.
 			break;
@@ -72,9 +72,19 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPreviousInstance, PWSTR commandline, in
 	windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
 	RegisterClassW(&windowClass);
 
+	// Create a known client area size.
+	RECT windowRectangle = {};
+	int clientWidth = 1280;
+	int clientHeight = 720;
+	SetRect(&windowRectangle, 0, 0, clientWidth, clientHeight);
+	AdjustWindowRect(&windowRectangle, WS_OVERLAPPEDWINDOW, FALSE);
+
+	int windowWidth = windowRectangle.right - windowRectangle.left;
+	int windowHeight = windowRectangle.bottom - windowRectangle.top;
+
 	// Create the window instance.
 	HWND windowInstance = CreateWindowExW(0, L"dxtwelve Window Class", L"dxtwelve", WS_OVERLAPPEDWINDOW,
-										CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL,
+										CW_USEDEFAULT, CW_USEDEFAULT, windowWidth, windowHeight, NULL,
 										NULL, hInstance, NULL);
 
 	// Ensure that the window is created. Show the window if it is, otherwise explode.
@@ -90,12 +100,13 @@ wWinMain(HINSTANCE hInstance, HINSTANCE hPreviousInstance, PWSTR commandline, in
 		MSG currentMessage = {};
 		while (PeekMessageW(&currentMessage, windowInstance, NULL, NULL, PM_REMOVE))
 		{
+			// If the application needs to quit, we will kill the loop and return from wWinMain.
+			if (currentMessage.message == WM_QUIT) { getAppState().isRunning = false; return 0; }
 			TranslateMessage(&currentMessage);
 			DispatchMessage(&currentMessage);
 		}
 
-		// If the application needs to quit, we will kill the loop and let it quit.
-		if (currentMessage.message == WM_QUIT) { getAppState().isRunning = false; return 0; }
+
 
 	}
 
