@@ -142,7 +142,7 @@ queue that Windows expects us to handle. A consequence of this unresponsive beha
 is that Windows will detect it as unresponsive. The best case is that the close button
 will not work, and the worst case is Windows flagging it as "unresponsive" and prompt
 the user to kill it. Actually, the worst case is the best case because a window you can
-not close is a problem for you. Unless you want to go into task manager every time you
+not close is a problem for the user. Unless you want to go into task manager every time you
 want to close your app, you will need some way of processing window events and the
 message queue.
 
