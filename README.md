@@ -31,17 +31,17 @@ pulled from Microsoft's own documentation.
 
 # Documentation
 
-### Pre-Initialization of DX12
+### Pre-Initialization Stage of DX12
 
-Before we can even begin initializing DirectX 12, we will need to perform so pre-initialization
+Before we can even begin initializing DirectX 12, we will need to perform some pre-initialization
 work with Windows. The process is relatively simple but there is a lot going on that goes unsaid
 throughout the process. [Microsoft's documentation](https://docs.microsoft.com) is a great resource
 to look deeper into the underlying functions and methodology and will be a great place to go if
 anything below seems a bit obtuse. What we are effectively trying to accomplish in the pre-initialization
 stage is creating a [Win32 Window](https://docs.microsoft.com/en-us/windows/win32/learnwin32/creating-a-window)
-and defining a simple application loop that takes of the required housekeeping needed to run a Win32 application.
+and defining a simple application loop that takes care of the required housekeeping needed to run a Win32 application.
 Fortunately, the code isn't particularly dense when trimmed down to the absolute necessary components and
-therefore doesn't require much prerequisite knowledge but I still highly recommend taking a look Microsoft's
+therefore doesn't require much prerequisite knowledge but I still highly recommend taking a look at Microsoft's
 documentation for a complete crash course in Win32 applications.
 
 Below, you will find a series of code snippets. It is assumed you are familiar with C++ enough to understand what
@@ -160,56 +160,55 @@ basis.
 INT WINAPI wWinMain(...)
 {
 ...
-	while (getAppState().isRunning)
-	{
-	...
-	MSG currentMessage;
-	while (PeekMessageW(&currentMessage, windowInstance, NULL, NULL, PM_REMOVE))
-	{
-		if (currentMessage.message == WM_QUIT) { getAppState().isRunning = false; return 0; }
-		TranslateMessage(&currentMessage);
-		DispatchMessage(&currentMessage);
-	}
+while (getAppState().isRunning)
+{
+...
+MSG currentMessage;
+while (PeekMessageW(&currentMessage, windowInstance, NULL, NULL, PM_REMOVE))
+{
+	if (currentMessage.message == WM_QUIT) { getAppState().isRunning = false; return 0; }
+	TranslateMessage(&currentMessage);
+	DispatchMessage(&currentMessage);
+}
 ```
 
 ```C++
 HRESULT CALLBACK WindowProcedure(...)
 {
-
-	switch(message)
+...
+switch(message)
+{
+	case WM_DESTROY:
 	{
-		case WM_DESTROY:
-		{
-			// WM_DESTROY indicates that the window is being destroyed, but we will treat it as a request to quit.
-			PostQuitMessage(0);
-			break;
-		}
-
-		case WM_CLOSE:
-		{
-			// WM_CLOSE indicates that the application should terminate.
-			getAppState().isRunning = false; // This is why we defined the global.
-			break;
-		}
-
-		case WM_PAINT:
-		{
-			// WM_PAINT is called when the client area of the window changes and we need to update the
-			// canvas with a fresh coat of paint.
-			PAINTSTRUCT ps = {};
-			HDC deviceContext = BeginPaint(windowInstance, &ps);
-			FillRect(deviceContext, &ps.rcPaint, (HBRUSH)(COLOR_WINDOW+1));
-			EndPaint(windowInstance, &ps);
-			break;
-		}
-
-		default:
-		{
-			break;
-		}
-
+		// WM_DESTROY indicates that the window is being destroyed, but we will treat it as a request to quit.
+		PostQuitMessage(0);
+		break;
 	}
 
-	return DefWindowProc(windowInstance, message, wParam, lParam); // For everything else, default.
+	case WM_CLOSE:
+	{
+		// WM_CLOSE indicates that the application should terminate.
+		getAppState().isRunning = false; // This is why we defined the global.
+		break;
+	}
+
+	case WM_PAINT:
+	{
+		// WM_PAINT is called when the client area of the window changes and we need to update the
+		// canvas with a fresh coat of paint.
+		PAINTSTRUCT ps = {};
+		HDC deviceContext = BeginPaint(windowInstance, &ps);
+		FillRect(deviceContext, &ps.rcPaint, (HBRUSH)(COLOR_WINDOW+1));
+		EndPaint(windowInstance, &ps);
+		break;
+	}
+
+	default:
+	{
+		break;
+	}
+}
+
+return DefWindowProc(windowInstance, message, wParam, lParam); // For everything else, default.
 ```
 
