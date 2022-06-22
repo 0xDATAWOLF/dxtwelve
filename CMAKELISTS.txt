@@ -5,6 +5,11 @@ project(dxtwelve)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+
 add_executable(dxtwelve WIN32
-	./src/main.cpp
-	./src/main.h)
+./src/main.cpp
+./src/main.h)
+
+target_link_libraries(dxtwelve PRIVATE "d3d12.lib")
+target_link_libraries(dxtwelve PRIVATE "DXGI.lib")
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT dxtwelve)

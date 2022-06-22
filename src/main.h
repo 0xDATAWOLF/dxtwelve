@@ -23,6 +23,9 @@ typedef int64_t 	i64;
 typedef i32			b32;
 typedef i64			b64;
 
+/** Alias ComPtr structure to something prettier. */
+#define MSWRLComPtr Microsoft::WRL::ComPtr
+
 /**
  * A structure that contains the various elements needed to handle the application
  * state and its required components.
@@ -31,6 +34,5 @@ struct app_state
 {
 	b32 isRunning;
 };
-
 
 #endif

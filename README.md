@@ -162,14 +162,14 @@ INT WINAPI wWinMain(...)
 ...
 while (getAppState().isRunning)
 {
-...
-MSG currentMessage;
-while (PeekMessageW(&currentMessage, windowInstance, NULL, NULL, PM_REMOVE))
-{
-	if (currentMessage.message == WM_QUIT) { getAppState().isRunning = false; return 0; }
-	TranslateMessage(&currentMessage);
-	DispatchMessage(&currentMessage);
-}
+	...
+	MSG currentMessage;
+	while (PeekMessageW(&currentMessage, windowInstance, NULL, NULL, PM_REMOVE))
+	{
+		if (currentMessage.message == WM_QUIT) { getAppState().isRunning = false; return 0; }
+		TranslateMessage(&currentMessage);
+		DispatchMessage(&currentMessage);
+	}
 ```
 
 ```C++
@@ -212,3 +212,146 @@ switch(message)
 return DefWindowProc(windowInstance, message, wParam, lParam); // For everything else, default.
 ```
 
+### Initialization Stages
+
+Initialization happens in a series steps as follows: (as per Frank D. Luna's book)
+
+1. [Create the ID3D12Device using the D3D12CreateDevice function.](#step-1)
+2. Create an ID3D12Fence object and query descriptor sizes.
+3. Check 4x MSAA quality level support.
+4. Create the command queue, command list allocator, and main command list.
+5. Describe and create the swap chain.
+6. Create the descriptor heaps the application requires.
+7. Resize the back buffer anbd create a render target view to the back buffer.
+8. Create the depth/stencil buffer and its associated depth/stencil view.
+9. Set the viewport and scissor rectangles.
+
+We will be interacting with Microsoft's COM interfaces; the Component Object Model.
+The purpose of the COM interface is to abstract out the compatability layers and
+hardware interactions from the programmer. Our interactions with the COM interfaces
+will be done through Windows Runtime Library's `ComPtr` class. It's a variant of a
+shared pointer data structure specifically designed for the COM interface.
+
+We are going to create a macro to the ComPtr class structure to make our lives
+a little easier. I don't personally like to use namespaces, so this is personal
+preference. You can use: `using Microsoft::WRL::ComPtr` if you'd like. Going forward,
+you will see me use this macro rather than namespacing out the `ComPtr`.
+
+```C++
+// A macro to shortcut to the ComPtr structure.
+#define MSWRLComPtr Microsoft::WRL::ComPtr
+```
+
+Enable the debug layer. This will be useful through the debug process and we can
+guard it out through the `DEBUG` macros when we wish to change builds. 
+
+```C++
+INT WINAPI wWinMain(...) {
+...
+#if (defined(DEBUG) || defined(_DEBUG))
+{
+	MSWRLComPtr<ID3D12Debug> debugController = {};
+	HRESULT _debugIStatus = D3D12GetDebugInterface(IID_PPV_ARGS(&debugController));
+	assert(SUCCEEDED(_debugIStatus));
+	debugController->EnableDebugLayer();
+}
+#endif
+while (getAppState().isRunning) { ... }
+...
+```
+
+### <span id="step-1">Step 1 Create Device using a Display Adapter</span>
+
+A ID3D12Device is a "virtual adapter" with which we construct using `ID3D12CreateDevice`.
+This instance is a singleton, giving access to methods to create command allocators,
+lists, queues, fences, and pretty much everything else we will need going forward.
+If we attempt to create another device using the same adapter, rather than return a new
+instance of ID3D12Device, we will receive the existing ID3D12Device instance created before.
+The reason it is a "virtual adapter" is because we can selectively assign which physical
+adapter we like (a graphics card). In some systems which lack any hardware based graphics
+acceleration, we will use a WARP adapter instead (a software adapter). On systems where
+the CPU has dedicated graphics, or on systems where there are more than one graphics card
+present, we may want to pick the most optimal of the bunch.
+
+To begin, we will first need to create an `IDXGIFactory4` for two reasons: it allows us
+to enumerate the various display adapters as well as enumerate specifically for the WARP
+adapter. We want the WARP adapter (Windows Advanced Resterization Platform) in case we
+need to fallback when a hardware graphics adapter is not present. The `IDXGIFactory4`
+inherits members of previous versions of `IDXGIFactory` such that we only need to create
+the one.
+
+The `IID_PPV_ARGS` macro serves to properly cast out `ComPtr` to the appropriate
+function arguments; it prevents common errors and should be used where appropriate.
+
+```C++
+MSWRLComPtr<IDXGIFactory4> dxgiFactory = {};
+HRESULT _createDxgiFactoryStatus = CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
+assert(SUCCEEDED(_createDxgiFactoryStatus));
+```
+
+With the `IDXGIFactory4`, we can now do a handful of useful procedures. First, we will
+enumerate over the list of available adapters and print them out to the debug window.
+As you can see, the information provides us with some useful information about the
+available display adapters. Additionally, we can also determine which display adapter
+is the WARP software adapter and, if need be, omit it from the vector list of adapters.
+This step is only necessary should the system use more than one hardware display adapters
+because the first parameter in `ID3D12CreateDevice` is optional. It takes the pointer to
+the desired display adapter. However, by passing in `nullptr`, we can ask the system to use
+the default display adapter--which is the first display adapter enumerated from `IDXGIFactory4`.
+It can be assumed that the first display adapter is the hardware adapter and not WARP if the
+system is using a dedicated graphics card or CPU graphics. It still might be useful to check
+if the system is using WARP, however, and isn't too much work to do a routine check before
+actually invoking `ID3D12CreateDevice` with `nullptr` as the input for the parameter `pAdapter`.
+
+```C++
+INT WINAPI wWinMain(...) {
+...
+std::vector<IDXGIAdapter1*> adapters;
+for (UINT i = 0;; ++i)
+{
+	IDXGIAdapter1* currentAdapter = nullptr;
+	HRESULT _enumStatus = dxgiFactory->EnumAdapters1(i, &currentAdapter);
+	if (_enumStatus == DXGI_ERROR_NOT_FOUND) break;
+
+	DXGI_ADAPTER_DESC1 adapterDescription = {};
+	currentAdapter->GetDesc1(&adapterDescription);
+
+	std::wstring descString = {};
+	descString += L"***Adapter: ";
+	descString += adapterDescription.Description;
+	descString += L" Vendor: ";
+	descString += std::to_wstring(adapterDescription.VendorId);
+	descString += L" Subsys: ";
+	descString += std::to_wstring(adapterDescription.SubSysId);
+	descString += L" DVRAM: ";
+	descString += std::to_wstring(adapterDescription.DedicatedVideoMemory);
+	descString += L" Software?: ";
+	b32 isSoftware = adapterDescription.Flags & DXGI_ADAPTER_FLAG_SOFTWARE;
+	descString += (isSoftware == 0) ? L"No" : L"Yes";
+	descString += L"\n";
+
+	OutputDebugString(descString.c_str());
+
+	adapters.push_back(currentAdapter);
+}
+```
+
+We can create the device with `D3D12CreateDevice`, supplied with nullptr to get the
+default display adapter. Should it not exist, we will fallback to the WARP adapter.
+
+```C++
+INT WINAPI wWinMain(...) {
+...
+MSWRLComPtr<ID3D12Device> d3dDevice = {};
+HRESULT _createDxgiHWDevice = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3dDevice));
+if (FAILED(_createDxgiHWDevice))
+{
+	// Fetch the WARP adapter.
+	MSWRLComPtr<IDXGIAdapter> WARPAdapter = {};
+	HRESULT _enumWarpAdStatus = dxgiFactory->EnumWarpAdapter(IID_PPV_ARGS(&WARPAdapter));
+	assert(SUCCEEDED(_enumWarpAdStatus));
+
+	HRESULT _createDxgiSWDevice = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&d3dDevice));
+	assert(SUCCEEDED(_createDxgiSWDevice));
+}
+```
